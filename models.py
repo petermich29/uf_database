@@ -2,7 +2,7 @@
 
 from sqlalchemy import (
     Column, Integer, String, Date, ForeignKey, 
-    UniqueConstraint 
+    UniqueConstraint, Text  # <--- AJOUT du type TEXT
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -19,6 +19,7 @@ class Composante(Base):
     
     code = Column(String(10), primary_key=True)
     label = Column(String(100))
+    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
     
     mentions = relationship("Mention", backref="composante")
 
@@ -29,6 +30,7 @@ class Domaine(Base):
     
     code = Column(String(10), primary_key=True)
     label = Column(String(100))
+    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
     
     mentions = relationship("Mention", backref="domaine")
 
@@ -41,6 +43,7 @@ class Mention(Base):
     
     code_mention = Column(String(20))
     label = Column(String(100))
+    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
     
     composante_code = Column(String(10), ForeignKey('composantes.code'))
     domaine_code = Column(String(10), ForeignKey('domaines.code'))
@@ -55,6 +58,7 @@ class Parcours(Base):
     id_parcours = Column(String(50), primary_key=True)
     code_parcours = Column(String(20))
     label = Column(String(100))
+    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
     
     mention_id = Column(String(50), ForeignKey('mentions.id_mention'))
     
@@ -67,10 +71,12 @@ class AnneeUniversitaire(Base):
     __table_args__ = {'extend_existing': True} 
     
     annee = Column(String(9), primary_key=True)
+    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
+    
     inscriptions = relationship("Inscription", backref="annee_univ")
 
 
-# --- TABLES DE DONNÉES ÉTUDIANT ET INSCRIPTION ---
+# --- TABLES DE DONNÉES ÉTUDIANT ET INSCRIPTION (INCHANGÉES) ---
 
 class Etudiant(Base):
     __tablename__ = 'etudiants'
