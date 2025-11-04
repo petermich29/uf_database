@@ -10,7 +10,7 @@ from datetime import date
 import config
 import database_setup
 from models import (
-    Composante, Domaine, Mention, Parcours, 
+    Institution, Composante, Domaine, Mention, Parcours, 
     AnneeUniversitaire, Etudiant, Inscription
 )
 
@@ -35,27 +35,62 @@ def safe_string(s):
 
 
 def import_metadata_to_db():
-    """Importe les données de la structure académique, avec correction des clés primaires."""
+    """
+    Importe les données de la structure académique (Institutions, Composantes, Domaines, 
+    Mentions, Parcours) depuis les fichiers Excel de référence.
+
+    Assure l'ordre d'insertion pour respecter les contraintes de clés étrangères (Institutions 
+    avant Composantes).
+    """
     print(f"\n--- 2. Démarrage de l'importation des métadonnées ---")
-    
-    try:
-        df = pd.read_excel(config.METADATA_FILE_PATH)
-        
-        # --- NORMALISATION DES NOMS DE COLONNES ---
-        df.columns = df.columns.str.lower()
-        df.columns = df.columns.str.replace(' ', '_')
-        
-        df = df.where(pd.notnull(df), None)
-        print(f"Fichier de métadonnées chargé. {len(df)} lignes trouvées.")
-    except Exception as e:
-        print(f"❌ ERREUR: Impossible de lire le fichier de métadonnées. {e}", file=sys.stderr)
-        return
         
     session = database_setup.get_session()
     errors = 0
 
     try:
-        # --- 0. Nettoyage initial et obligatoire des clés critiques ---
+        
+        # 1. Importation des Institutions (Nouveau fichier de référence)
+        # -----------------------------------------------------------
+        print("\n--- 2.1 Importation des Institutions ---")
+        try:
+            df_inst = pd.read_excel(config.INSTITUTION_FILE_PATH)
+            df_inst.columns = df_inst.columns.str.lower().str.replace(' ', '_')
+            df_inst = df_inst.where(pd.notnull(df_inst), None)
+            
+            # Nettoyage des clés critiques Institution
+            df_inst['institution_id'] = df_inst['institution_id'].astype(str).apply(safe_string)
+            df_inst_clean = df_inst.drop_duplicates(subset=['institution_id']).dropna(subset=['institution_id'])
+            
+            for _, row in tqdm(df_inst_clean.iterrows(), total=len(df_inst_clean), desc="Import Institutions"):
+                session.merge(Institution(
+                    id_institution=row['institution_id'], 
+                    nom=safe_string(row['institution_nom']),
+                    type_institution=safe_string(row['institution_type'])
+                ))
+            
+            session.commit()
+            print("✅ Importation des Institutions terminée.")
+            
+        except Exception as e:
+            print(f"❌ ERREUR: Impossible de lire ou d'importer le fichier Institutions. {e}", file=sys.stderr)
+            session.rollback()
+            return
+            
+        # 2. Importation des autres Métadonnées (Composante, Domaine, Mention, Parcours)
+        # -----------------------------------------------------------------------------
+        print("\n--- 2.2 Importation des Composantes, Domaines, Mentions, Parcours ---")
+        try:
+            df = pd.read_excel(config.METADATA_FILE_PATH)
+            df.columns = df.columns.str.lower().str.replace(' ', '_')
+            df = df.where(pd.notnull(df), None)
+            print(f"Fichier de métadonnées académiques chargé. {len(df)} lignes trouvées.")
+        except Exception as e:
+            print(f"❌ ERREUR: Impossible de lire le fichier de métadonnées académiques. {e}", file=sys.stderr)
+            return
+
+
+        # --- Nettoyage initial et obligatoire des clés critiques ---
+        df['institution_id'] = df['institution_id'].astype(str).apply(safe_string) 
         df['composante'] = df['composante'].astype(str).apply(safe_string)
         df['domaine'] = df['domaine'].astype(str).apply(safe_string)
         df['id_mention'] = df['id_mention'].astype(str).apply(safe_string) 
@@ -64,35 +99,35 @@ def import_metadata_to_db():
         print(f"DEBUG: Nombre initial de lignes lues (DF source): {len(df)}")
         
         
-        # 1. Composantes
-        df_composantes = df[['composante', 'label_composante']].drop_duplicates(subset=['composante']).dropna(subset=['composante'])
+        # 2. Composantes (MISE À JOUR pour inclure la clé Institution)
+        df_composantes = df[['composante', 'label_composante', 'institution_id']].drop_duplicates(subset=['composante']).dropna(subset=['composante'])
         for _, row in tqdm(df_composantes.iterrows(), total=len(df_composantes), desc="Import Composantes"):
-            session.merge(Composante(code=row['composante'], label=safe_string(row['label_composante'])))
+            session.merge(Composante(
+                code=row['composante'], 
+                label=safe_string(row['label_composante']),
+                id_institution=row['institution_id'] # Clé Étrangère
+            ))
 
-        # 2. Domaines
+        # 3. Domaines
         df_domaines = df[['domaine', 'label_domaine']].drop_duplicates(subset=['domaine']).dropna(subset=['domaine'])
         for _, row in tqdm(df_domaines.iterrows(), total=len(df_domaines), desc="Import Domaines"):
             session.merge(Domaine(code=row['domaine'], label=safe_string(row['label_domaine'])))
 
-        # --- 3. Mentions ---
+        # --- 4. Mentions ---
         df_mentions_source = df[['mention', 'label_mention', 'id_mention', 'composante', 'domaine']].drop_duplicates(subset=['id_mention']).dropna(subset=['id_mention'])
         for _, row in tqdm(df_mentions_source.iterrows(), total=len(df_mentions_source), desc="Import Mentions"):
             session.merge(Mention(
-                id_mention=row['id_mention'],             
+                id_mention=row['id_mention'],           
                 code_mention=safe_string(row['mention']),
                 label=safe_string(row['label_mention']),
                 composante_code=row['composante'], 
                 domaine_code=row['domaine']
             ))
 
-        # --- 4. Parcours ---
-        
+        # --- 5. Parcours ---
         df_parcours = df[['id_parcours', 'parcours', 'label_parcours', 'mention', 'date_creation', 'date_fin']].copy()
-
-        # Déduplication FORCÉE 
+        
         df_parcours = df_parcours.drop_duplicates(subset=['id_parcours'], keep='first').dropna(subset=['id_parcours'])
-
-        # Jointure pour obtenir l'id_mention
         df_mentions_jointure = df_mentions_source[['mention', 'id_mention']].drop_duplicates(subset=['mention'], keep='first')
         
         df_parcours_merged = pd.merge(
@@ -117,7 +152,7 @@ def import_metadata_to_db():
             ))
             
         session.commit()
-        print("✅ Importation des métadonnées terminée avec succès.")
+        print("✅ Importation des métadonnées académiques (Composante, etc.) terminée avec succès.")
 
     except Exception as e:
         session.rollback()

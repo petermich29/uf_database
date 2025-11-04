@@ -1,8 +1,8 @@
-# models.py
+# models.py (Mis à jour pour inclure la table Institution)
 
 from sqlalchemy import (
     Column, Integer, String, Date, ForeignKey, 
-    UniqueConstraint, Text  # <--- AJOUT du type TEXT
+    UniqueConstraint, Text 
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -11,7 +11,36 @@ from sqlalchemy.orm import relationship
 Base = declarative_base()
 
 
+# -------------------------------------------------------------------
+# --- NOUVELLE TABLE DE RÉFÉRENCE: INSTITUTION ----------------------
+# -------------------------------------------------------------------
+
+class Institution(Base):
+    __tablename__ = 'institutions'
+    __table_args__ = {'extend_existing': True}
+    
+    # Clé Primaire : Identifiant unique de l'institution
+    id_institution = Column(String(32), primary_key=True) 
+    
+    # Nom de l'institution (Ex: Université de Fianarantsoa)
+    nom = Column(String(255), nullable=False, unique=True)
+    
+    # Type : 'Public' ou 'Privé'
+    type_institution = Column(String(10), nullable=False)
+    
+    # Champ de description libre
+    description = Column(Text, nullable=True)
+    
+    # Relation : Une institution peut avoir plusieurs composantes
+    composantes = relationship("Composante", back_populates="institution")
+    
+    # Remarque : Les champs de métadonnées (date_creation) ont été omis pour coller 
+    # au style des autres tables du fichier (simplicité).
+
+
+# -------------------------------------------------------------------
 # --- TABLES DE RÉFÉRENCE (MÉTA-DONNÉES ACADÉMIQUES) ---
+# -------------------------------------------------------------------
 
 class Composante(Base):
     __tablename__ = 'composantes'
@@ -19,7 +48,13 @@ class Composante(Base):
     
     code = Column(String(10), primary_key=True)
     label = Column(String(100))
-    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
+    description = Column(Text, nullable=True) 
+    
+    # NOUVELLE CLÉ ÉTRANGÈRE vers l'Institution
+    id_institution = Column(String(32), ForeignKey('institutions.id_institution'), nullable=True) 
+    
+    # NOUVELLE RELATION vers l'Institution
+    institution = relationship("Institution", back_populates="composantes")
     
     mentions = relationship("Mention", backref="composante")
 
@@ -30,7 +65,7 @@ class Domaine(Base):
     
     code = Column(String(10), primary_key=True)
     label = Column(String(100))
-    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
+    description = Column(Text, nullable=True) 
     
     mentions = relationship("Mention", backref="domaine")
 
@@ -43,7 +78,7 @@ class Mention(Base):
     
     code_mention = Column(String(20))
     label = Column(String(100))
-    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
+    description = Column(Text, nullable=True) 
     
     composante_code = Column(String(10), ForeignKey('composantes.code'))
     domaine_code = Column(String(10), ForeignKey('domaines.code'))
@@ -58,7 +93,7 @@ class Parcours(Base):
     id_parcours = Column(String(50), primary_key=True)
     code_parcours = Column(String(20))
     label = Column(String(100))
-    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
+    description = Column(Text, nullable=True) 
     
     mention_id = Column(String(50), ForeignKey('mentions.id_mention'))
     
@@ -71,12 +106,14 @@ class AnneeUniversitaire(Base):
     __table_args__ = {'extend_existing': True} 
     
     annee = Column(String(9), primary_key=True)
-    description = Column(Text, nullable=True) # <-- UTILISATION de TEXT
+    description = Column(Text, nullable=True) 
     
     inscriptions = relationship("Inscription", backref="annee_univ")
 
 
+# -------------------------------------------------------------------
 # --- TABLES DE DONNÉES ÉTUDIANT ET INSCRIPTION (INCHANGÉES) ---
+# -------------------------------------------------------------------
 
 class Etudiant(Base):
     __tablename__ = 'etudiants'
@@ -88,7 +125,6 @@ class Etudiant(Base):
     numero_inscription = Column(String(50)) 
     nom = Column(String(100))
     prenoms = Column(String(150))
-    # Taille ajustée après les erreurs de troncation
     sexe = Column(String(20)) 
 
     # État Civil
@@ -98,7 +134,6 @@ class Etudiant(Base):
     
     # Baccalauréat 
     bacc_annee = Column(Integer, nullable=True)
-    # Taille ajustée pour accepter les chaînes longues (ex: 'sciences eco et sociales,maths')
     bacc_serie = Column(String(50)) 
     bacc_centre = Column(String(100))
     
@@ -108,7 +143,6 @@ class Etudiant(Base):
     mail = Column(String(100))
     
     # CIN 
-    # Taille ajustée pour accepter le numéro + date + lieu de délivrance
     cin = Column(String(100))
     cin_date = Column(Date, nullable=True)
     cin_lieu = Column(String(100))
@@ -130,7 +164,6 @@ class Inscription(Base):
     formation = Column(String(20), nullable=True)
     
     # Contrainte d'unicité pour les inscriptions
-    # Garantit qu'un étudiant n'a qu'une seule inscription pour un contexte donné
     __table_args__ = (
         UniqueConstraint(
             'code_etudiant', 
