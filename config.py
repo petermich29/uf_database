@@ -26,3 +26,5 @@ DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{
 
 # URL pour la BDD par défaut (utile pour la création de la BDD cible)
 DEFAULT_DB_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/postgres?client_encoding=utf8"
+
+#scolarité
